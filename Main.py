@@ -109,3 +109,6 @@ with open(title+'.pdf','wb') as file:
 #####
 # "https://clinicaltrials.gov/api/v2/studies?query.titles=CARdioprotection+in+Myocardial+Infarction" \
 #  -H "accept: application/json"
+
+##################### Frontend ##########################
+# pyside6-uic -i form.ui -o ui_form.py
