@@ -115,7 +115,8 @@ class Downloader:
         docpos = -1
         colnames = allcols.split(',')
 
-        # find doc position
+        # find doc position,
+        # TODO: find other columns later
         for i in range(0, len(colnames)):
             if colnames[i].strip() == 'Study Documents':
                 docpos = i
@@ -124,16 +125,16 @@ class Downloader:
                 continue
 
         # for each study, create a study object and store
-        # for i in range(1, len(lines)):
-        #     tmp = lines[i].split(',\"')
-        #     title = tmp[0]
-        #     study = Study(title, docpos, tmp)
-        #     self.studies.append(study)
+        for i in range(1, len(lines)):
+            tmp = lines[i].split(',\"')
+            title = tmp[0]
+            study = Study(title, docpos, i, tmp)
+            self.studies.append(study)
 
-        tmp = lines[1].split(',\"')
-        title = tmp[0]
-        study = Study(title, docpos, tmp)
-        self.studies.append(study)
+        # tmp = lines[1].split(',\"')
+        # title = tmp[0]
+        # study = Study(title, docpos, tmp)
+        # self.studies.append(study)
 
         print(resp.headers.get('x-total-count'))
 
@@ -152,25 +153,27 @@ class Downloader:
             # keep only 200 chars, change later
             validtitle = titletmp[0:200]
             validtitle = validtitle.strip() # windows want no space or . in folder names
-            print('ValidTitle: {}'.format(validtitle))
-            csvString = '"' + titletmp + '"'+','
+            # print('ValidTitle: {}'.format(validtitle))
+            titlewindex = str(study.index) + '-' + validtitle
+            print('titlewindex: {}'.format(titlewindex))
+
+            csvString = '"' + titletmp + '"'+','    # First column in csv, Study Title
+            print('csvString: {}'.format(csvString))
+
             for i in range(len(filenames)):
                 filename = filenames[i]
                 fileUrl = fileUrls[i]
 
-                print(filename)
-                print(fileUrl)
                 resp = urllib3.request(
                     "GET",
                     fileUrl
                 )
 
-
-
-                directory = self.downloadFolder + validtitle + '/'
+                directory = self.downloadFolder + titlewindex + '/'
                 print(directory)
                 file_path = os.path.join(directory, filename)
                 print(file_path)
+
                 if not os.path.isdir(directory):
                     os.makedirs(directory)
                 with open(file_path + '.pdf', 'wb') as file:
@@ -179,8 +182,8 @@ class Downloader:
 
                 # TODO: figure out a good relative path
                 # relative path of csv file to download folder
-                relative_path = './' + validtitle + '/'
-                csvString = self.addtocsv(csvString, filename, relative_path)
+                relative_folder_path = './' + titlewindex + '/'
+                csvString = self.addtocsv(csvString, filename, relative_folder_path)
 
             self.writeLinetoCSV(csvString)
         self.writeAlltoCSV()
@@ -199,14 +202,14 @@ class Downloader:
         #         file.write(resp.data)
         #         file.close()
 
-    def addtocsv(self,csvString,filename,file_path):
+    def addtocsv(self,csvString,filename,folder_path):
         """
         Assume that csv file goes into the same folder as download, change later
         :return:
         """
         # "=HYPERLINK(""http://www.Google.com"",""Google"")"
         header = csvString
-        modifiedString = (header + '"=HYPERLINK(""' + file_path +filename+ '.pdf"",'
+        modifiedString = (header + '"=HYPERLINK(""' + folder_path +filename+ '.pdf"",'
                           + '""' + filename + '"")",')
         return modifiedString
     def writeLinetoCSV(self,csvString):

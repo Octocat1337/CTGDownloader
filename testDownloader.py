@@ -7,8 +7,8 @@ from urllib3 import request
 if __name__ == '__main__':
     d = Downloader()
     # d.setStudyTitle('Safety of Pentoxifylline and Vitamin E With Stereotactic Ablative Radiotherapy (SABR) in Non-small Cell Lung Cancers')
-    d.setCondition('Non-small Cell Lung Cancer')
-    d.setPageSize(10)
+    d.setCondition('Small Cell Lung Cancer')
+    d.setPageSize(2)
     d.setaggFilter('docs:prot')
     d.setCountTotal('true')
     # d.setformat('json')

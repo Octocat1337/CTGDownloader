@@ -4,9 +4,16 @@ class Study:
     def __init__(self, *args):
         """
         init study
-        :param args: title,docpos,[(fileName,fileUrl)]
+        :param args: title,docpos,index,[(fileName,fileUrl)]
         """
+        # innate property
         self.title = ''
+        self.index = -1
+        # params for args
+        self.titlepos = 0
+        self.docpos = 1
+        self.indexpos = 2
+        self.filespos = 3
         #
         self.hasProtocol = False
         self.hasSAP = False
@@ -33,14 +40,10 @@ class Study:
         Parse args for method 2
         :return:
         """
-        self.title = self.args[0]
-        print(self.title)
-        docpos = self.args[1]
-        # print('docpos: ')
-        # print(docpos)
-        docs = self.args[2][docpos]
-        # print('docs: ')
-        # print(docs)
+        self.title = self.args[self.titlepos]
+        self.index = self.args[self.indexpos]
+        docpos = self.args[self.docpos]
+        docs = self.args[self.filespos][docpos]
 
         docscontent = []
         tmp = docs.split('|')
@@ -50,7 +53,6 @@ class Study:
             pattern = re.compile(r'\s+|"')
             filename = re.sub(pattern,'',tmp3[0])
             fileurl = re.sub(pattern,'',tmp3[1])
-
 
             docscontent.append((filename, fileurl))
 
