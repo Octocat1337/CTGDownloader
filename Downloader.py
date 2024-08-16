@@ -134,9 +134,9 @@ class Downloader:
             }
         )
         count = resp.headers.get('x-total-count')
-        print(count)
-        print()
-        print(resp.data)
+        # print(count)
+        # print()
+        # print(resp.data)
         self.createStudies(resp)
         return {
             'count': count,
