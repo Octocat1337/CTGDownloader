@@ -265,7 +265,7 @@ class Downloader:
 
             self.writeLinetoCSV(csvString)
         self.writeAlltoCSV()
-        self.writeALltoHTML()
+        self.writeAlltoHTML()
 
     def addtocsv(self,csvString,filename,folder_path):
         """
