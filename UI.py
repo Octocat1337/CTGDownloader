@@ -101,8 +101,7 @@ class CTDWindow(QWidget):
 
 
         # other settings
-        self.tableWidget.setAutoScroll(False)
-        self.tableWidget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.initTable()
 
         # add everything to layouts
         self.topscrollarea.setLayout(self.searchBarLayout)
@@ -115,6 +114,13 @@ class CTDWindow(QWidget):
         # self.mainLayout.stretch(20,50,10)
         # self.mainLayout.addStretch()
         self.setLayout(self.mainLayout)
+
+        # testing purposes
+        self.count = 1
+
+    def initTable(self):
+        self.tableWidget.setAutoScroll(False)
+        self.tableWidget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
     def search(self):
         # control buttons
@@ -180,34 +186,48 @@ class CTDWindow(QWidget):
         :param studies:
         :return:
         """
+        print('Building Table')
         # columns:
         # checkbox, index number, study title
         count = result['count']
         studies = result['studies']
+
+        self.tableWidget.clearContents()
+        print(self.tableWidget.rowCount())
+        print(self.tableWidget.columnCount())
 
         if len(studies) == 0:
             return
 
         self.resultBar.setText('Number of results: {}'.format(count))
 
+        # TODO: change row and column numbers dynamically
         self.tableWidget.setColumnCount(1)
         self.tableWidget.setHorizontalHeaderItem(0,QTableWidgetItem('Title'))
-        self.tableWidget.setRowCount(len(studies)) # TODO: change row numbers
+        self.tableWidget.setRowCount(len(studies))
 
         header = self.tableWidget.horizontalHeader()
         header.setSectionResizeMode(0,QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        # header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
+
+
+        print(f'studylength:{len(studies)}')
         for i in range(0, len(studies)):
             checkbox = QTableWidgetItem()
+            # print(studies[i].title)
             checkbox.setText(studies[i].title)
             checkbox.setFlags(QtCore.Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             checkbox.setCheckState(Qt.Checked)
 
+            # self.tableWidget.removeCellWidget()
             self.tableWidget.setItem(i, 0, checkbox)
 
-            # self.tableWidget.setItem(i,1,QTableWidgetItem(studies[i].title))
 
+
+            # self.tableWidget.setItem(i,1,QTableWidgetItem(studies[i].title))
+        self.count += 1
+        print('Finished Building Table')
 
     def download(self):
         # get which file should be downloaded

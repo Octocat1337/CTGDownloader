@@ -134,9 +134,9 @@ class Downloader:
             }
         )
         count = resp.headers.get('x-total-count')
-        print(count)
-        print()
-        print(resp.data)
+        # print(count)
+        # print()
+        # print(resp.data)
         self.createStudies(resp)
         return {
             'count': count,
@@ -265,20 +265,7 @@ class Downloader:
 
             self.writeLinetoCSV(csvString)
         self.writeAlltoCSV()
-
-        # if study.hasProtocol:
-        #     resp = urllib3.request(
-        #         "GET",
-        #         study.ProtocolUrl
-        #     )
-        #     directory = './' + self.downloadFolder + '/'
-        #     filename = study.ProtocolName
-        #     file_path = os.path.join(directory, filename)
-        #     if not os.path.isdir(directory):
-        #         os.makedirs(directory)
-        #     with open(file_path + '.pdf', 'wb') as file:
-        #         file.write(resp.data)
-        #         file.close()
+        self.writeALltoHTML()
 
     def addtocsv(self,csvString,filename,folder_path):
         """
@@ -304,4 +291,8 @@ class Downloader:
             file.write(self.csvfile.encode('utf-8'))
             file.close()
 
+    #TODO: write to HTML. but do I need style sheet ?
+    def writeAlltoHTML(self):
+
+        return
 # https://clinicaltrials.gov/data-api/about-api/csv-download
