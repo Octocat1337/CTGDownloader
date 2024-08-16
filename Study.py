@@ -29,7 +29,7 @@ class Study:
 
         # method 2. keep documents as is
         # args is passed as an array of tuple
-        # title, docpos, [separated study lines]
+        # title, docpos,index,[separated study lines]
         self.fileNames = []
         self.fileUrls = []
 
@@ -40,19 +40,22 @@ class Study:
         Parse args for method 2
         :return:
         """
-        self.title = self.args[self.titlepos]
+        # setup properties
+        self.title = self.args[self.titlepos].strip()
         self.index = self.args[self.indexpos]
         docpos = self.args[self.docpos]
-        docs = self.args[self.filespos][docpos]
 
+        # setup study documents
+        docs = self.args[self.filespos][docpos]
         docscontent = []
+        if docs == '':
+            return
+
         tmp = docs.split('|')
-        # print(tmp)
         for tmp2 in tmp:
-            tmp3 = tmp2.split(',')
-            pattern = re.compile(r'\s+|"')
-            filename = re.sub(pattern,'',tmp3[0])
-            fileurl = re.sub(pattern,'',tmp3[1])
+            tmp3 = re.sub(r'\s+|"', '', tmp2)
+            filename = re.sub(r'(.*),\s*http.*', r'\1', tmp3)
+            fileurl = re.sub(r'.*(http.*\..*)', r'\1', tmp3)
 
             docscontent.append((filename, fileurl))
 

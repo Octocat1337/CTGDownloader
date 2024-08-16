@@ -1,3 +1,4 @@
+import csv
 from enum import Enum
 import os.path
 import urllib3
@@ -23,14 +24,24 @@ class Downloader:
         self.downloadurl = ''
         self.fields = 'Study Title|Study Documents'
         self.format = 'csv'
+
         # optional search args
         self.studyTitle = ''
+        self.outcome = '' # outcome
+
+        # displayed on the front page of website
         self.condition = ''
+        self.term = '' # other terms
+        self.treat = '' # treatment
+        self.location = '' # location , cannot do. use google map api ?
+
+        # aggFilters
         self.aggFilters = ''
+        self.phase = '' # 0 1 2 3 4 NA
 
         # functional args
-        self.pageSize = 10
-        self.countTotal = 'false'
+        self.pageSize = 10  # set changeable later
+        self.countTotal = 'true' # always get count number
 
         self.studies = []
         self.csvfilename = ''  #changeable
@@ -47,14 +58,18 @@ class Downloader:
 
     def setCondition(self, condition):
         self.condition = condition
-
+    def setTreat(self,treat):
+        self.treat = treat
+    def setTerm(self,term):
+        self.term = term
     def setformat(self, format):
         '''
         :param format: default format is csv
         :return:
         '''
         self.format = format
-
+    def getStudies(self):
+        return self.studies
     # functional setters
     def setPageSize(self, pageSize):
         self.pageSize = pageSize
@@ -72,19 +87,36 @@ class Downloader:
         '''
         self.fields += '|' + field
 
-    def setaggFilter(self, filter):
+    def buildAggFilters(self, filter):
         if self.aggFilters == '':
-            self.aggFilters = filter
+            self.aggFilters = filter.strip()
         else:
-            self.aggFilters = self.aggFilters + '|' + filter
+            self.aggFilters = self.aggFilters + ',' + filter.strip()
 
     # TODO: add queries
+
     def buildurl(self):
         self.downloadurl = self.defaulturl + self.secondaryAPI
 
-    # when download button is pressed, run this function
-    def download(self):
+    # TODO: Search function.
+    def search(self):
+        '''
+        when search button is pressed
+        :return: an array of studies, self.studies[]
+        '''
         self.buildurl()
+        print('Searching...')
+        print(self.format)
+        print(self.condition)
+        print(self.term)
+        print(self.treat)
+        print(self.outcome)
+        print(self.studyTitle)
+        print(self.aggFilters)
+        print(self.fields)
+        print(f'pageSize={self.pageSize}')
+        print('Finished printing search params \n')
+        # print('downloadurl: {}'.format(self.downloadurl))
         resp = urllib3.request(
             "GET",
             self.downloadurl,
@@ -92,14 +124,36 @@ class Downloader:
                 "format": self.format,
                 "query.titles": self.studyTitle,
                 "query.cond": self.condition,
+                "query.term" : self.term,
+                "query.intr" : self.treat,
+                "query.outc": self.outcome,
                 "aggFilters": self.aggFilters,
                 "fields": self.fields,
                 "pageSize": self.pageSize,
                 "countTotal": self.countTotal
             }
         )
+        count = resp.headers.get('x-total-count')
+        print(count)
+        print()
+        print(resp.data)
         self.createStudies(resp)
-        self.savefiles()
+        return {
+            'count': count,
+            'studies': self.studies
+        }
+    # when download button is pressed, run this function
+    def download(self,studyindex):
+        '''
+        stores studies into self. then download
+        :param studyindex: array of int that points to studies in the studies[]
+        :return:
+        '''
+        studies = []
+        for index in studyindex:
+            studies.append(self.studies[index])
+
+        self.savefiles(studies)
 
     def createStudies(self, resp):
         """
@@ -108,44 +162,68 @@ class Downloader:
         :return:
         """
         data = resp.data.decode('utf-8')
-        # print(type(data))  string
-        lines = data.splitlines()
-        # TODO: Dynamically get study documents
-        allcols = lines[0]  # Study Title, Study Documents etc.
-        docpos = -1
-        colnames = allcols.split(',')
+        print('resp.data:\n{}'.format(data))
 
-        # find doc position,
-        # TODO: find other columns later
-        for i in range(0, len(colnames)):
-            if colnames[i].strip() == 'Study Documents':
+        content = []
+        reader = csv.reader(data.splitlines(),delimiter=',')
+        for row in reader:
+            content.append(row)
+
+        docpos = -1
+        headers = content[0]
+        # TODO: returned study documents seem to be always at the end ?
+        for i in range(0, len(headers)):
+            # Study Documents position can be empty !
+            if headers[i].strip() == 'Study Documents':
                 docpos = i
                 break
             else:
                 continue
 
         # for each study, create a study object and store
-        for i in range(1, len(lines)):
-            tmp = lines[i].split(',\"')
-            title = tmp[0]
-            study = Study(title, docpos, i, tmp)
+        for i in range(1, len(content)):
+            title = content[i][0]
+            study = Study(title, docpos, i, content[i])
             self.studies.append(study)
+
+        # # TODO: Dynamically get study documents
+        # allcols = lines[0]  # Study Title, Study Documents etc.
+        # docpos = -1
+        # colnames = allcols.split(',')
+        #
+        # # find doc position,
+        # # TODO: find other columns later
+        # for i in range(0, len(colnames)):
+        #     # Study Documents position can be empty !
+        #     if colnames[i].strip() == 'Study Documents':
+        #         docpos = i
+        #         break
+        #     else:
+        #         continue
+        #
+        # # for each study, create a study object and store
+        # for i in range(1, len(lines)):
+        #     tmp = lines[i].split(',\"')
+        #     print('tmp:  ' + str(tmp))
+        #     title = tmp[0]
+        #     study = Study(title, docpos, i, tmp)
+        #     self.studies.append(study)
 
         # tmp = lines[1].split(',\"')
         # title = tmp[0]
         # study = Study(title, docpos, tmp)
         # self.studies.append(study)
 
-        print(resp.headers.get('x-total-count'))
 
-    def savefiles(self):
+
+    def savefiles(self, studies):
         '''
         takes http reponse and get its data
         for each study in studies[]
         download the file and save it
         :return: nothing
         '''
-        for study in self.studies:
+        for study in studies:
             filenames = study.fileNames
             fileUrls = study.fileUrls
             # Parse study tile for valid folder name
@@ -158,21 +236,21 @@ class Downloader:
             print('titlewindex: {}'.format(titlewindex))
 
             csvString = '"' + titletmp + '"'+','    # First column in csv, Study Title
-            print('csvString: {}'.format(csvString))
+            # print('csvString: {}'.format(csvString))
 
             for i in range(len(filenames)):
                 filename = filenames[i]
                 fileUrl = fileUrls[i]
-
+                print('fileurl: {}'.format(fileUrl))
                 resp = urllib3.request(
                     "GET",
                     fileUrl
                 )
 
                 directory = self.downloadFolder + titlewindex + '/'
-                print(directory)
+                print('dir: {}'.format(directory))
                 file_path = os.path.join(directory, filename)
-                print(file_path)
+                print('fp: {}'.format(file_path))
 
                 if not os.path.isdir(directory):
                     os.makedirs(directory)
