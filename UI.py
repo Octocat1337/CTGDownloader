@@ -1,10 +1,11 @@
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QThreadPool
 from PySide6.QtGui import QIcon
 
 from PySide6.QtWidgets import QWidget, QFormLayout, QVBoxLayout, QPushButton, QTableWidget, QHBoxLayout, QScrollArea, \
-    QLineEdit, QLabel, QCheckBox, QComboBox, QTableWidgetItem, QHeaderView, QAbstractItemView
+    QLineEdit, QLabel, QCheckBox, QTableWidgetItem, QAbstractItemView, QProgressBar, \
+    QSizePolicy
 from Downloader import Downloader
 from Study import Study
 
@@ -15,8 +16,6 @@ class CTDWindow(QWidget):
         self.setWindowTitle('CTD')
         self.setWindowIcon(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave))
 
-
-
         # Outtermost main layout
         self.mainLayout = QVBoxLayout()
 
@@ -24,12 +23,6 @@ class CTDWindow(QWidget):
         self.searchBarLayout = QFormLayout()
 
         self.bottomLayout = QHBoxLayout()
-
-
-        # central table widget
-        self.resultBar = QLabel()
-        self.tableWidget = QTableWidget()
-
 
         # top search bar, will expand
         # self.topscrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -79,8 +72,29 @@ class CTDWindow(QWidget):
         self.searchBarLayout.addRow('Study Phase:',self.phaseLayout)
         self.searchBarLayout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # Create buttons
+        # result bar under the search section
+        self.resultBarLayout = QHBoxLayout()
+        self.resultBarLayoutLeft = QHBoxLayout()
+        self.resultBarLayoutRight = QHBoxLayout() # placeholder
+        self.resultBarPlaceholder = QWidget()
+        self.resultBarLayoutRight.addWidget(self.resultBarPlaceholder)
+        self.resultBarLabel = QLabel('Number of results:')
+        self.resultBarLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.resultBarLabel.setFixedWidth(150) # by pixels
+        self.resultBarProgression = QProgressBar()
+        self.resultBarLayoutLeft.addWidget(self.resultBarLabel,20)
+        self.resultBarLayoutLeft.addWidget(self.resultBarProgression,70)
+        self.resultBarLayout.addLayout(self.resultBarLayoutLeft,50)
+        self.resultBarLayout.addLayout(self.resultBarLayoutRight,50)
 
+        # central table widget
+        self.tableWidget = QTableWidget()
+
+        ########## Create buttons ##########
+
+        # result bar buttons
+        self.resultBarStopBtn = QPushButton('Stop')
+        self.resultBarLayoutLeft.addWidget(self.resultBarStopBtn,10)
 
 
         # Create bottom buttons
@@ -99,24 +113,26 @@ class CTDWindow(QWidget):
         self.searchBtn.clicked.connect(self.search)
         self.downloadBtn.clicked.connect(self.download)
 
-
         # other settings
         self.initTable()
 
-        # add everything to layouts
+        # add everything to outermost layouts
         self.topscrollarea.setLayout(self.searchBarLayout)
         self.mainLayout.addWidget(self.topscrollarea, stretch=30)
-        self.mainLayout.addWidget(self.resultBar,stretch=2)
+        self.mainLayout.addLayout(self.resultBarLayout,stretch=2)
+        # self.mainLayout.addView(self.tableWidget, stretch=58)
         self.mainLayout.addWidget(self.tableWidget, stretch=58)
         self.mainLayout.addLayout(self.bottomLayout, stretch=10)
 
         # end
-        # self.mainLayout.stretch(20,50,10)
-        # self.mainLayout.addStretch()
         self.setLayout(self.mainLayout)
+
+        # Multi-Thread Progress bar
+        self.threadpool = QThreadPool()
 
         # testing purposes
         self.count = 1
+
 
     def initTable(self):
         self.tableWidget.setAutoScroll(False)
@@ -126,6 +142,7 @@ class CTDWindow(QWidget):
         # control buttons
         self.downloadBtn.setEnabled(True)
         self.downloader = Downloader()  # 1 new downloader per search ?
+        self.resultBarStopBtn.pressed.connect(self.downloader.kill)
         # load params
         # primary
         self.downloader.setStudyTitle(self.titleLine.text())
@@ -179,7 +196,6 @@ class CTDWindow(QWidget):
         #TODO: add functions ?
         self.buildtable(result)
 
-
     def buildtable(self,result):
         """
         build central table with study names
@@ -199,7 +215,7 @@ class CTDWindow(QWidget):
         if len(studies) == 0:
             return
 
-        self.resultBar.setText('Number of results: {}'.format(count))
+        self.resultBarLabel.setText('Number of results: {}'.format(count))
 
         # TODO: change row and column numbers dynamically
         self.tableWidget.setColumnCount(1)
@@ -207,10 +223,9 @@ class CTDWindow(QWidget):
         self.tableWidget.setRowCount(len(studies))
 
         header = self.tableWidget.horizontalHeader()
-        header.setSectionResizeMode(0,QHeaderView.ResizeMode.ResizeToContents)
+        header.setDefaultSectionSize(1200)
+        # header.setSectionResizeMode(0,QHeaderView.ResizeMode.ResizeToContents)
         # header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-
-
 
         print(f'studylength:{len(studies)}')
         for i in range(0, len(studies)):
@@ -222,17 +237,18 @@ class CTDWindow(QWidget):
 
             # self.tableWidget.removeCellWidget()
             self.tableWidget.setItem(i, 0, checkbox)
-
-
+            self.tableWidget.resizeRowToContents(i)
 
             # self.tableWidget.setItem(i,1,QTableWidgetItem(studies[i].title))
-        self.count += 1
+        self.count += 1 # for Testing Purpose
+
         print('Finished Building Table')
 
     def download(self):
         # get which file should be downloaded
-        print('will download')
+        print('Dowloading...')
         self.downloadBtn.setEnabled(False)
+
 
         # a better way to do this ?
         studyindex = []
@@ -241,7 +257,15 @@ class CTDWindow(QWidget):
             if checkbox.checkState() == Qt.Checked:
                 studyindex.append(row)
 
-        self.downloader.download(studyindex)
+        self.downloader.signals.updateProgressBar.connect(self.updateProgressBar)
+        self.downloader.indexToDownload = studyindex
+        self.threadpool.start(self.downloader.download)
+        # self.downloader.download(studyindex)
+
+
+    def updateProgressBar(self,value):
+        self.resultBarProgression.setValue(value)
+    def stopDownload(self):
         return
 
     # links buttons

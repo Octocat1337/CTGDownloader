@@ -2,12 +2,21 @@ import csv
 from enum import Enum
 import os.path
 import urllib3
-from urllib3 import request
+from PySide6 import QtCore
+from PySide6.QtCore import QRunnable, Signal, Slot, QObject
 from Study import Study
 import re
 from datetime import datetime
 
-class Downloader:
+# for multi-thread
+class WorkerSignal(QObject):
+    def __init__(self):
+        super().__init__()
+
+    updateProgressBar = Signal(int)
+class WorkerKilledException(Exception):
+    pass
+class Downloader(QRunnable):
     class SecondaryAPI(Enum):
         studies = '/studies'
         nctID = '/studies/'
@@ -17,13 +26,17 @@ class Downloader:
             return str(self.value)
 
     def __init__(self):
-
+        super().__init__()
         self.defaulturl = 'https://clinicaltrials.gov/api/v2'
         self.downloadFolder = './download/'
         self.secondaryAPI = str(self.SecondaryAPI.studies)
         self.downloadurl = ''
         self.fields = 'Study Title|Study Documents'
         self.format = 'csv'
+        # Multi-Thread for the progress bar
+        self.signals = WorkerSignal()
+        self.is_killed = False
+        self.indexToDownload = [] # [index of studies to download]
 
         # optional search args
         self.studyTitle = ''
@@ -142,15 +155,15 @@ class Downloader:
             'count': count,
             'studies': self.studies
         }
-    # when download button is pressed, run this function
-    def download(self,studyindex):
+
+    def download(self):
         '''
         stores studies into self. then download
         :param studyindex: array of int that points to studies in the studies[]
         :return:
         '''
         studies = []
-        for index in studyindex:
+        for index in self.indexToDownload:
             studies.append(self.studies[index])
 
         self.savefiles(studies)
@@ -215,7 +228,7 @@ class Downloader:
         # self.studies.append(study)
 
 
-
+    @Slot()
     def savefiles(self, studies):
         '''
         takes http reponse and get its data
@@ -223,7 +236,10 @@ class Downloader:
         download the file and save it
         :return: nothing
         '''
-        for study in studies:
+        # count progress bar by study numbers
+        studylen = len(studies)
+
+        for listindex, study in enumerate(studies):
             filenames = study.fileNames
             fileUrls = study.fileUrls
             # Parse study tile for valid folder name
@@ -233,40 +249,53 @@ class Downloader:
             validtitle = validtitle.strip() # windows want no space or . in folder names
             # print('ValidTitle: {}'.format(validtitle))
             titlewindex = str(study.index) + '-' + validtitle
-            print('titlewindex: {}'.format(titlewindex))
+            # print('titlewindex: {}'.format(titlewindex))
 
             csvString = '"' + titletmp + '"'+','    # First column in csv, Study Title
             # print('csvString: {}'.format(csvString))
 
-            for i in range(len(filenames)):
-                filename = filenames[i]
-                fileUrl = fileUrls[i]
-                print('fileurl: {}'.format(fileUrl))
-                resp = urllib3.request(
-                    "GET",
-                    fileUrl
-                )
+            flen = len(filenames)
+            try:
+                for i in range(flen):
+                    if self.is_killed:
+                        raise WorkerKilledException
+                    filename = filenames[i]
+                    fileUrl = fileUrls[i]
+                    print('fileurl: {}'.format(fileUrl))
+                    resp = urllib3.request(
+                        "GET",
+                        fileUrl
+                    )
 
-                directory = self.downloadFolder + titlewindex + '/'
-                print('dir: {}'.format(directory))
-                file_path = os.path.join(directory, filename)
-                print('fp: {}'.format(file_path))
+                    directory = self.downloadFolder + titlewindex + '/'
+                    # print('dir: {}'.format(directory))
+                    file_path = os.path.join(directory, filename)
+                    print('fp: {}'.format(file_path))
 
-                if not os.path.isdir(directory):
-                    os.makedirs(directory)
-                with open(file_path + '.pdf', 'wb') as file:
-                    file.write(resp.data)
-                    file.close()
+                    if not os.path.isdir(directory):
+                        os.makedirs(directory)
+                    with open(file_path + '.pdf', 'wb') as file:
+                        file.write(resp.data)
+                        file.close()
 
-                # TODO: figure out a good relative path
-                # relative path of csv file to download folder
-                relative_folder_path = './' + titlewindex + '/'
-                csvString = self.addtocsv(csvString, filename, relative_folder_path)
+                    # TODO: figure out a good relative path
+                    # relative path of csv file to download folder
+                    relative_folder_path = './' + titlewindex + '/'
+                    csvString = self.addtocsv(csvString, filename, relative_folder_path)
 
+            except WorkerKilledException:
+                print('Stop Button Pressed')
+                pass
             self.writeLinetoCSV(csvString)
+            # for Multi-Thread progress bar
+            # TODO: calculate progress bar values.
+            print(f'Emitting Value: {(listindex + 1) * 100 / studylen}')
+            self.signals.updateProgressBar.emit((listindex + 1) * 100 / studylen)
         self.writeAlltoCSV()
         self.writeAlltoHTML()
 
+    def kill(self):
+        self.is_killed = True
     def addtocsv(self,csvString,filename,folder_path):
         """
         Assume that csv file goes into the same folder as download, change later
