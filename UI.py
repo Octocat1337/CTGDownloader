@@ -249,6 +249,11 @@ class CTDWindow(QWidget):
         print('Dowloading...')
         self.downloadBtn.setEnabled(False)
 
+        # Set downloader search args to generate HTML folder
+        self.downloader.studyTitle = self.titleLine.text()
+        self.downloader.condition = self.condLine.text()
+        self.downloader.treat = self.treatLine.text()
+        self.downloader.term = self.termLine.text()
 
         # a better way to do this ?
         studyindex = []
@@ -258,19 +263,19 @@ class CTDWindow(QWidget):
                 studyindex.append(row)
 
         self.downloader.signals.updateProgressBar.connect(self.updateProgressBar)
+        self.downloader.signals.downloadButton.connect(self.updateDownloadButton)
         self.downloader.indexToDownload = studyindex
         self.threadpool.start(self.downloader.download)
         # self.downloader.download(studyindex)
 
+        # after download, restore button ?
+        # self.downloadBtn.setEnabled(True)
+
 
     def updateProgressBar(self,value):
         self.resultBarProgression.setValue(value)
-    def stopDownload(self):
-        return
-
-    # links buttons
-
-
+    def updateDownloadButton(self,bool):
+        self.downloadBtn.setEnabled(bool)
 
 
 
