@@ -18,6 +18,8 @@ class WorkerSignal(QObject):
 
     updateProgressBar = Signal(int)
     updateDownloadButton = Signal(bool)
+    disableNextBtn = Signal(bool)
+
 
 class WorkerKilledException(Exception):
     pass
@@ -61,7 +63,7 @@ class Downloader(QRunnable):
 
         # functional args
         self.pageSize = 10  # set changeable later
-        self.countTotal = 'true'  # always get count number
+        self.countTotal = 'true'  # The parameter is ignored for the subsequent pages
 
         self.studies = []
         # write to CSV
@@ -71,6 +73,16 @@ class Downloader(QRunnable):
         # change mode, choose between CSV and HTML
         self.filemode = filemode  # default mode
         self.htmlWriter = HTMLWriter()
+
+        # handle pages
+        self.pageTokens = ['', '']  # array of string pageToken. first 2 are dummies
+        self.pageNumber = 1
+
+        # Global params for studies
+        self.resultTotal = 0
+        self.docpos = 0
+        self.docposFound = False
+        self.studyIndices = []
 
     def setSecondaryAPI(self, API):
         if not isinstance(API, self.SecondaryAPI):
@@ -97,8 +109,15 @@ class Downloader(QRunnable):
         '''
         self.format = format
 
-    def getStudies(self):
-        return self.studies
+    def getStudies(self, pageNum):
+        studies = self.studies[self.pageSize * (pageNum - 1):self.pageSize * pageNum]
+        print(f'******* pageNUM={pageNum} study length: {len(studies)} *******')
+        print(f'Total study length: {len(self.studies)}')
+        return studies
+
+    def getIndices(self, pageNum):
+        indices = self.studyIndices[self.pageSize * (pageNum - 1):self.pageSize * pageNum]
+        return indices
 
     # functional setters
     def setPageSize(self, pageSize):
@@ -129,28 +148,42 @@ class Downloader(QRunnable):
         self.downloadurl = self.defaulturl + self.secondaryAPI
 
     # TODO: Search function.
-    def search(self):
-        '''
-        when search button is pressed
-        :return: an array of studies, self.studies[]
-        '''
+    def search(self, pageNum=1):
+        """
+        when search button is pressed, all search params are already recorded in self
+        :return: an array of studies and the indices noting which one is selected
+        """
         self.buildurl()
         print('Searching...')
-        print(self.format)
-        print(self.condition)
-        print(self.term)
-        print(self.treat)
-        print(self.outcome)
-        print(self.studyTitle)
-        print(self.aggFilters)
-        print(self.fields)
-        print(f'pageSize={self.pageSize}')
-        print('Finished printing search params \n')
+        # print(self.format)
+        # print(self.condition)
+        # print(self.term)
+        # print(self.treat)
+        # print(self.outcome)
+        # print(self.studyTitle)
+        # print(self.aggFilters)
+        # print(self.fields)
+        # print(f'pageSize={self.pageSize}')
+        # print('Finished printing search params \n')
         # print('downloadurl: {}'.format(self.downloadurl))
-        resp = urllib3.request(
-            "GET",
-            self.downloadurl,
-            fields={
+
+        pageToken = self.getPageToken(pageNum)
+        if pageNum > 1:
+            fields = {
+                "format": self.format,
+                "query.titles": self.studyTitle,
+                "query.cond": self.condition,
+                "query.term": self.term,
+                "query.intr": self.treat,
+                "query.outc": self.outcome,
+                "aggFilters": self.aggFilters,
+                "fields": self.fields,
+                "pageSize": self.pageSize,
+                "countTotal": self.countTotal,
+                "pageToken": pageToken
+            }
+        else:
+            fields = {
                 "format": self.format,
                 "query.titles": self.studyTitle,
                 "query.cond": self.condition,
@@ -161,16 +194,54 @@ class Downloader(QRunnable):
                 "fields": self.fields,
                 "pageSize": self.pageSize,
                 "countTotal": self.countTotal
+                # "pageToken": ''
             }
+
+        # If study already exists, do not search
+
+        start = self.pageSize * (pageNum - 1)
+        end = self.pageSize * pageNum
+        print(f'in search , before resp, pgeNum={pageNum} start={start} lenstudies={len(self.studies)}')
+        if start < len(self.studies):
+            print(f'already exists, returning...')
+            return {
+                'indices': self.studyIndices[start:end],
+                'studies': self.studies[start:end]
+            }
+        print(f'Does not yet exist, appending studies')
+        resp = urllib3.request(
+            "GET",
+            self.downloadurl,
+            fields=fields
         )
-        count = resp.headers.get('x-total-count')
-        # print(count)
-        # print()
-        # print(resp.data)
-        self.createStudies(resp)
+        if pageNum == 1:
+            self.resultTotal = int(resp.headers.get('x-total-count'))
+            # print(f'resultTotaldebug: type={type(self.resultTotal)} value={self.resultTotal}')
+        pageToken = resp.headers.get('x-next-page-token')
+        # last page !
+        if pageToken is None:
+            # disable the next page button
+            print('Empty page Token ,last one')
+            print(type(pageToken))
+            self.signals.disableNextBtn.emit(False)
+
+        print('+++++++++++++++')
+        print(f'pageNum={pageNum}')
+        print(f'pageToken = {pageToken}')
+        print(str(self.pageTokens))
+        print('finished printing pageTokens')
+
+        if pageToken is not None:
+            self.pageTokens.append(pageToken)
+
+        self.createStudies(resp=resp, pageNum=pageNum)  # append studies to self.studies[]
+
+        studies = self.getStudies(pageNum)
+        indices = self.getIndices(pageNum)
+
         return {
-            'count': count,
-            'studies': self.studies
+            'indices': indices,
+            'studies': studies  # will be used to build table. should return studies for the current page.
         }
 
     @Slot()
@@ -181,8 +252,11 @@ class Downloader(QRunnable):
         :return:
         '''
         studies = []  # array of STUDY objects to download.
-        for index in self.indexToDownload:
-            studies.append(self.studies[index])
+        # for index in self.indexToDownload:
+        #     studies.append(self.studies[index])
+        for i in range(0, len(self.studyIndices)):
+            if self.studyIndices[i] == 1:
+                studies.append(self.studies[i])
 
         if self.filemode == 'HTML':  # <- default choice
             self.writeToHTML(studies)
@@ -194,64 +268,48 @@ class Downloader(QRunnable):
 
         return
 
-    def createStudies(self, resp):
+    def createStudies(self, resp=None, pageNum=1):
         """
         Create studies from http resp object
         :param resp:
         :return:
         """
+        print('******* Creating Studies *******')
         data = resp.data.decode('utf-8')
-        print('resp.data:\n{}'.format(data))
+        # print('resp.data:\n{}'.format(data))
 
         content = []
         reader = csv.reader(data.splitlines(), delimiter=',')
         for row in reader:
             content.append(row)
+        print(f'content study numbers: {len(content)}')
 
-        docpos = -1
         headers = content[0]
         # TODO: returned study documents seem to be always at the end ?
-        for i in range(0, len(headers)):
-            # Study Documents position can be empty !
-            if headers[i].strip() == 'Study Documents':
-                docpos = i
-                break
-            else:
-                continue
+        if not self.docposFound:
+            for i in range(0, len(headers)):
+                # Study Documents position can be empty !
+                if headers[i].strip() == 'Study Documents':
+                    self.docpos = i
+                    break
 
         # for each study, create a study object and store
-        for i in range(1, len(content)):
+        # 1st page has col names, others pages do not
+        # TODO: dynamically get title
+        start = 0 if self.docposFound else 1
+        shift = 1 if self.docposFound else 0
+        for i in range(start, len(content)):
             title = content[i][0]
-            study = Study(title, docpos, i, content[i])
+            study = Study(
+                title=title,
+                docpos=self.docpos,
+                index=i + shift + self.pageSize * (pageNum - 1),
+                content=content[i]
+            )
             self.studies.append(study)
+            self.studyIndices.append(1)  # by default, all studies are selected
 
-        # # TODO: Dynamically get study documents
-        # allcols = lines[0]  # Study Title, Study Documents etc.
-        # docpos = -1
-        # colnames = allcols.split(',')
-        #
-        # # find doc position,
-        # # TODO: find other columns later
-        # for i in range(0, len(colnames)):
-        #     # Study Documents position can be empty !
-        #     if colnames[i].strip() == 'Study Documents':
-        #         docpos = i
-        #         break
-        #     else:
-        #         continue
-        #
-        # # for each study, create a study object and store
-        # for i in range(1, len(lines)):
-        #     tmp = lines[i].split(',\"')
-        #     print('tmp:  ' + str(tmp))
-        #     title = tmp[0]
-        #     study = Study(title, docpos, i, tmp)
-        #     self.studies.append(study)
-
-        # tmp = lines[1].split(',\"')
-        # title = tmp[0]
-        # study = Study(title, docpos, tmp)
-        # self.studies.append(study)
+        self.docposFound = True
 
     def kill(self):
         self.is_killed = True
@@ -363,4 +421,46 @@ class Downloader(QRunnable):
         self.htmlWriter.writeToHTML()
 
         # build HTML from template
+        return
+
+    def getPageToken(self, pageNum):
+        # soft check if it's last page
+
+        if pageNum == 1:
+            return ''
+        else:
+            return self.pageTokens[pageNum]
+
+    def updateStudyIndices(self, studyIndices=None, pageNum=1):
+
+        currentpage = pageNum
+        arr = studyIndices
+
+        start = self.pageSize * (currentpage - 1)
+        end = start + len(studyIndices)
+
+        # does current page exist ?
+        exist = False
+        if len(self.studies) > start:
+            exist = True
+        print('****** update study indices ******')
+        print(f'start={start} end={end} pageNum={pageNum} exist={exist}')
+        print('before update:')
+        print(self.studyIndices)
+        print('to update:')
+        print(studyIndices)
+
+        # if exist, update current page
+        if exist:
+            arritr = iter(arr)
+            print('exists. updating')
+            for i in range(start, end):
+                self.studyIndices[i] = next(arritr)
+        # else, append current page
+        else:
+            self.studyIndices.extend(studyIndices)
+
+        print('after update:')
+        print(self.studyIndices)
+        print('finished updating study indices')
         return
