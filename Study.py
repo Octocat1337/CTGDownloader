@@ -1,19 +1,25 @@
-import json
 import re
+
+
 class Study:
-    def __init__(self, *args):
+    def __init__(self,
+                 title='',
+                 docpos=0,
+                 index=0,
+                 content=None,
+                 *args, **kwargs
+                 ):
         """
         init study
         :param args: title,docpos,index,[(fileName,fileUrl)]
         """
         # innate property
-        self.title = ''
-        self.index = -1
+        self.title = title
+        self.index = index
         # params for args
-        self.titlepos = 0
-        self.docpos = 1
-        self.indexpos = 2
+        self.docpos = docpos
         self.filespos = 3
+        self.content = content
         #
         self.hasProtocol = False
         self.hasSAP = False
@@ -35,18 +41,14 @@ class Study:
 
         self.args = args
         self.parseArgs2()
+
     def parseArgs2(self):
         """
         Parse args for method 2
         :return:
         """
-        # setup properties
-        self.title = self.args[self.titlepos].strip()
-        self.index = self.args[self.indexpos]
-        docpos = self.args[self.docpos]
-
         # setup study documents
-        docs = self.args[self.filespos][docpos]
+        docs = self.content[self.docpos]
         docscontent = []
         if docs == '':
             return
@@ -60,8 +62,8 @@ class Study:
             docscontent.append((filename, fileurl))
 
         # self.docNames =
-        for tuple in docscontent:
-            filename,fileurl = tuple
+        for filetuple in docscontent:
+            filename, fileurl = filetuple
             self.fileNames.append(filename)
             self.fileUrls.append(fileurl)
 
