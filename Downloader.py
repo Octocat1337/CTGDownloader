@@ -215,7 +215,8 @@ class Downloader(QRunnable):
             fields=fields
         )
         if pageNum == 1:
-            self.resultTotal = resp.headers.get('x-total-count')
+            self.resultTotal = int(resp.headers.get('x-total-count'))
+            # print(f'resultTotaldebug: type={type(self.resultTotal)} value={self.resultTotal}')
         pageToken = resp.headers.get('x-next-page-token')
         # last page !
         if pageToken is None:

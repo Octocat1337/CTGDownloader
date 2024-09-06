@@ -1,3 +1,4 @@
+from math import ceil
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, QSize, QThreadPool, Slot
@@ -82,9 +83,13 @@ class CTDWindow(QWidget):
         self.resultBarLabel = QLabel('Number of results:')
         self.resultBarLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.resultBarLabel.setFixedWidth(150) # by pixels
+        self.pageNumLabel = QLabel('Page:')
+        self.pageNumLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.pageNumLabel.setFixedWidth(150) # by pixels
         self.resultBarProgression = QProgressBar()
         self.resultBarLayoutLeft.addWidget(self.resultBarLabel,20)
-        self.resultBarLayoutLeft.addWidget(self.resultBarProgression,70)
+        self.resultBarLayoutLeft.addWidget(self.pageNumLabel, 20)
+        self.resultBarLayoutLeft.addWidget(self.resultBarProgression,60)
         self.resultBarLayout.addLayout(self.resultBarLayoutLeft,50)
         self.resultBarLayout.addLayout(self.resultBarLayoutRight,50)
 
@@ -238,6 +243,8 @@ class CTDWindow(QWidget):
             return
 
         self.resultBarLabel.setText('Number of results: {}'.format(self.downloader.resultTotal))
+        totalpages = ceil(self.downloader.resultTotal/self.downloader.pageSize)
+        self.pageNumLabel.setText(f'Page: {self.pageNum}/{totalpages}')
 
         # TODO: change row and column numbers dynamically
         self.tableWidget.setColumnCount(1)
