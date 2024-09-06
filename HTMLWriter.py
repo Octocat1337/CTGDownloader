@@ -1,5 +1,4 @@
 import os
-import re
 from datetime import datetime
 
 import urllib3
@@ -53,16 +52,19 @@ class HTMLWriter(QRunnable):
         studylen = len(self.studies)
 
         # read in HTML template
-        htmlfile = open('indexTemplate.html', 'r')
+        templateFileName = 'indexTemplate.html'
+        templateFolder = 'resources'
+
+        templatePath = os.path.join(templateFolder, templateFileName)
+        htmlfile = open(templatePath, 'r')
         htmlcontent = htmlfile.readlines()
         htmlfile.close()
-
+        print('HTMLWriter: loaded template')
         endline = 0
         for linenumber, line in enumerate(htmlcontent):
             if line.find('table ends') > 0:
                 endline = linenumber
                 break
-
 
         # file names: default filenames.
         # example: ProtocolAndSAP
@@ -113,7 +115,8 @@ class HTMLWriter(QRunnable):
                     # print(self.downloadFolder) # NONE ????
                     # print(self.HTMLFolderName)
 
-                    directory = self.downloadFolder + '/' + self.HTMLFolderName + '/' + str(study.index)
+                    # directory = self.downloadFolder + '/' + self.HTMLFolderName + '/' + str(study.index)
+                    directory = os.path.join(self.downloadFolder, self.HTMLFolderName ,str(study.index))
                     # print('dir: {}'.format(directory))
                     file_path = os.path.join(directory, filename)
                     print('fp: {}'.format(file_path))
@@ -146,7 +149,8 @@ class HTMLWriter(QRunnable):
             self.signals.updateProgressBar.emit((listindex + 1) * 90 / studylen)
 
         # Write to real HTML File
-        with open(self.downloadFolder + '/' + self.HTMLFolderName + ' index.html', 'w') as file:
+        indexFilePath = os.path.join(self.downloadFolder, self.HTMLFolderName+' index.html')
+        with open(indexFilePath, 'w') as file:
             file.writelines(htmlcontent)
 
         # all done. Enable download button and do a popup

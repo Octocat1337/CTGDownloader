@@ -361,7 +361,7 @@ class Downloader(QRunnable):
                         fileUrl
                     )
 
-                    directory = self.downloadFolder + titlewindex + '/'
+                    directory = self.downloadFolder + titlewindex
                     # print('dir: {}'.format(directory))
                     file_path = os.path.join(directory, filename)
                     print('fp: {}'.format(file_path))
@@ -375,6 +375,7 @@ class Downloader(QRunnable):
                     # TODO: figure out a good relative path
                     # relative path of csv file to download folder
                     relative_folder_path = './' + titlewindex + '/'
+
                     csvString = self.addtocsv(csvString, filename, relative_folder_path)
 
             except WorkerKilledException:
