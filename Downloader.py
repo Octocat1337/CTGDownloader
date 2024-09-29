@@ -34,15 +34,17 @@ class Downloader(QRunnable):
         def __str__(self):
             return str(self.value)
 
-    def __init__(self, filemode='HTML'):
+    def __init__(self, filemode='HTML', parent=None):
         super().__init__()
         self.defaulturl = 'https://clinicaltrials.gov/api/v2'
-        self.downloadFolder = './download'
+        # self.downloadFolder = './download'
+        self.downloadFolder = 'download'
         self.secondaryAPI = str(self.SecondaryAPI.studies)
         self.downloadurl = ''
         self.fields = 'Study Title|Study Documents'
         self.format = 'csv'
         # Multi-Thread for the progress bar
+        self.parent = parent
         self.signals = WorkerSignal()
         self.is_killed = False
         self.indexToDownload = []  # [index of studies to download]
@@ -72,7 +74,7 @@ class Downloader(QRunnable):
 
         # change mode, choose between CSV and HTML
         self.filemode = filemode  # default mode
-        self.htmlWriter = HTMLWriter()
+        self.htmlWriter = HTMLWriter(parent=self)
 
         # handle pages
         self.pageTokens = ['', '']  # array of string pageToken. first 2 are dummies
@@ -148,13 +150,16 @@ class Downloader(QRunnable):
         self.downloadurl = self.defaulturl + self.secondaryAPI
 
     # TODO: Search function.
-    def search(self, pageNum=1):
+    def search(self, pageNum=1, all=False):
         """
         when search button is pressed, all search params are already recorded in self
         :return: an array of studies and the indices noting which one is selected
         """
         self.buildurl()
-        print('Searching...')
+        if all:
+            print('Searching...Download All')
+        else:
+            print('Searching...')
         # print(self.format)
         # print(self.condition)
         # print(self.term)
@@ -202,13 +207,15 @@ class Downloader(QRunnable):
         start = self.pageSize * (pageNum - 1)
         end = self.pageSize * pageNum
         print(f'in search , before resp, pgeNum={pageNum} start={start} lenstudies={len(self.studies)}')
-        if start < len(self.studies):
+        if start < len(self.studies) and not all:
             print(f'already exists, returning...')
             return {
                 'indices': self.studyIndices[start:end],
                 'studies': self.studies[start:end]
             }
-        print(f'Does not yet exist, appending studies')
+        if not all:
+            print(f'Does not yet exist, appending studies')
+
         resp = urllib3.request(
             "GET",
             self.downloadurl,
@@ -216,7 +223,7 @@ class Downloader(QRunnable):
         )
         if pageNum == 1:
             self.resultTotal = int(resp.headers.get('x-total-count'))
-            # print(f'resultTotaldebug: type={type(self.resultTotal)} value={self.resultTotal}')
+            print(f'resultTotaldebug: type={type(self.resultTotal)} value={self.resultTotal} pagesize={self.pageSize}')
         pageToken = resp.headers.get('x-next-page-token')
         # last page !
         if pageToken is None:
@@ -234,7 +241,10 @@ class Downloader(QRunnable):
         if pageToken is not None:
             self.pageTokens.append(pageToken)
 
-        self.createStudies(resp=resp, pageNum=pageNum)  # append studies to self.studies[]
+        if not all:
+            self.createStudies(resp=resp, pageNum=pageNum)  # append studies to self.studies[]
+        else:
+            self.createStudies(resp=resp, pageNum=pageNum, all=True) # reset self.studies[] then append
 
         studies = self.getStudies(pageNum)
         indices = self.getIndices(pageNum)
@@ -245,18 +255,22 @@ class Downloader(QRunnable):
         }
 
     @Slot()
-    def download(self):
+    def download(self, all=False):
         '''
         stores studies into self. then download
         :param studyindex: array of int that points to studies in the studies[]
         :return:
         '''
+        print('Downloader Downloading...')
         studies = []  # array of STUDY objects to download.
-        # for index in self.indexToDownload:
-        #     studies.append(self.studies[index])
-        for i in range(0, len(self.studyIndices)):
-            if self.studyIndices[i] == 1:
-                studies.append(self.studies[i])
+
+        if all:
+            for i in range(0, len(self.studyIndices)):
+                if self.studyIndices[i] == 1:
+                    studies.append(self.studies[i])
+        else:
+            for study in self.studies:
+                studies.append(study)
 
         if self.filemode == 'HTML':  # <- default choice
             self.writeToHTML(studies)
@@ -268,7 +282,16 @@ class Downloader(QRunnable):
 
         return
 
-    def createStudies(self, resp=None, pageNum=1):
+    @Slot()
+    def downloadAll(self):
+        # search again with max pagesize
+        print('result Total = ', self.resultTotal)
+        self.setPageSize(self.resultTotal)
+        self.search(all=True)
+        self.download(all=True)
+        return
+
+    def createStudies(self, resp=None, pageNum=1, all=False):
         """
         Create studies from http resp object
         :param resp:
@@ -282,7 +305,7 @@ class Downloader(QRunnable):
         reader = csv.reader(data.splitlines(), delimiter=',')
         for row in reader:
             content.append(row)
-        print(f'content study numbers: {len(content)}')
+        # print(f'content study numbers: {len(content)}')
 
         headers = content[0]
         # TODO: returned study documents seem to be always at the end ?
@@ -296,8 +319,13 @@ class Downloader(QRunnable):
         # for each study, create a study object and store
         # 1st page has col names, others pages do not
         # TODO: dynamically get title
-        start = 0 if self.docposFound else 1
-        shift = 1 if self.docposFound else 0
+        start = 0 if self.docposFound and not all else 1
+        shift = 1 if self.docposFound and not all else 0
+        print(f'start={start} shift={shift}')
+        if all:
+            self.studies=[]
+            self.studyIndices=[]
+
         for i in range(start, len(content)):
             title = content[i][0]
             study = Study(
@@ -406,6 +434,7 @@ class Downloader(QRunnable):
 
     def writeToHTML(self, studies):
         # get a new HTML folder and file for each download
+        print('writeToHTML updating...')
         self.htmlWriter.update(
             studyTitle=self.studyTitle,
             condition=self.condition,

@@ -5,6 +5,7 @@ import re
 
 if __name__ == '__main__':
     app = QApplication()
+    app.setStyle("Fusion")
     window = CTDWindow()
     window.show()
     sys.exit(app.exec())
