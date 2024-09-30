@@ -1,0 +1,12 @@
+QTableWidget::item {
+    padding: 5px
+}
+
+QPushButton:hover {
+    background-color: #82c8ff;
+
+
+}
+QProgressbar {
+    border: 2px solid grey;
+}

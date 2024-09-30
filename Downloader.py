@@ -9,7 +9,11 @@ from HTMLWriter import HTMLWriter
 from Study import Study
 import re
 from datetime import datetime
+import logging
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p',
+                    filename='CTD-log.log', encoding='utf-8', level=logging.INFO)
 
 # for multi-thread
 class WorkerSignal(QObject):
@@ -37,8 +41,13 @@ class Downloader(QRunnable):
     def __init__(self, filemode='HTML', parent=None):
         super().__init__()
         self.defaulturl = 'https://clinicaltrials.gov/api/v2'
-        # self.downloadFolder = './download'
-        self.downloadFolder = 'download'
+
+        # self.downloadFolder = 'download'
+        self.parent=parent
+        self.downloadFolder = self.parent.parent.config_values.get('downloadFolder') # CTDWindow -> UI -> config_values
+        self.pageSize = self.parent.parent.config_values.get('pageSize')
+        # print(f'----Downloader Init: pageSize={self.pageSize}-----')
+
         self.secondaryAPI = str(self.SecondaryAPI.studies)
         self.downloadurl = ''
         self.fields = 'Study Title|Study Documents'
@@ -57,6 +66,7 @@ class Downloader(QRunnable):
         self.condition = ''
         self.term = ''  # other terms
         self.treat = ''  # treatment
+        self.sponsor = ''
         self.location = ''  # location , cannot do. use google map api ?
 
         # aggFilters
@@ -64,7 +74,6 @@ class Downloader(QRunnable):
         self.phase = ''  # 0 1 2 3 4 NA
 
         # functional args
-        self.pageSize = 10  # set changeable later
         self.countTotal = 'true'  # The parameter is ignored for the subsequent pages
 
         self.studies = []
@@ -77,6 +86,7 @@ class Downloader(QRunnable):
         self.htmlWriter = HTMLWriter(parent=self)
 
         # handle pages
+        # page starts at 1, and 1st page has no token.
         self.pageTokens = ['', '']  # array of string pageToken. first 2 are dummies
         self.pageNumber = 1
 
@@ -113,8 +123,8 @@ class Downloader(QRunnable):
 
     def getStudies(self, pageNum):
         studies = self.studies[self.pageSize * (pageNum - 1):self.pageSize * pageNum]
-        print(f'******* pageNUM={pageNum} study length: {len(studies)} *******')
-        print(f'Total study length: {len(self.studies)}')
+        # logger.info(f'******* pageNUM={pageNum} study length: {len(studies)} *******')
+        # logger.info(f'Total study length: {len(self.studies)}')
         return studies
 
     def getIndices(self, pageNum):
@@ -157,21 +167,20 @@ class Downloader(QRunnable):
         """
         self.buildurl()
         if all:
-            print('Searching...Download All')
+            logger.info('Searching...Download All')
         else:
-            print('Searching...')
-        # print(self.format)
-        # print(self.condition)
-        # print(self.term)
-        # print(self.treat)
-        # print(self.outcome)
-        # print(self.studyTitle)
-        # print(self.aggFilters)
-        # print(self.fields)
-        # print(f'pageSize={self.pageSize}')
-        # print('Finished printing search params \n')
-        # print('downloadurl: {}'.format(self.downloadurl))
-
+            logger.info('Searching...')
+        # logger.info(self.format)
+        # logger.info(self.condition)
+        # logger.info(self.term)
+        # logger.info(self.treat)
+        # logger.info(self.outcome)
+        # logger.info(self.studyTitle)
+        # logger.info(self.aggFilters)
+        # logger.info(self.fields)
+        # logger.info(f'pageSize={self.pageSize}')
+        # logger.info('Finished printing search params \n')
+        # logger.info('downloadurl: {}'.format(self.downloadurl))
         pageToken = self.getPageToken(pageNum)
         if pageNum > 1:
             fields = {
@@ -181,6 +190,7 @@ class Downloader(QRunnable):
                 "query.term": self.term,
                 "query.intr": self.treat,
                 "query.outc": self.outcome,
+                "query.spons": self.sponsor,
                 "aggFilters": self.aggFilters,
                 "fields": self.fields,
                 "pageSize": self.pageSize,
@@ -195,6 +205,7 @@ class Downloader(QRunnable):
                 "query.term": self.term,
                 "query.intr": self.treat,
                 "query.outc": self.outcome,
+                "query.spons": self.sponsor,
                 "aggFilters": self.aggFilters,
                 "fields": self.fields,
                 "pageSize": self.pageSize,
@@ -203,40 +214,44 @@ class Downloader(QRunnable):
             }
 
         # If study already exists, do not search
-
         start = self.pageSize * (pageNum - 1)
         end = self.pageSize * pageNum
-        print(f'in search , before resp, pgeNum={pageNum} start={start} lenstudies={len(self.studies)}')
+        logger.info(f'in search , before resp, pgeNum={pageNum} start={start} lenstudies={len(self.studies)}')
+        logger.info(f'{self.pageTokens}')
         if start < len(self.studies) and not all:
-            print(f'already exists, returning...')
+            # logger.info(f'already exists, returning...')
+            # pageToken check: is it last page ?
+            if self.pageTokens[pageNum+1] == '':
+                self.signals.disableNextBtn.emit(False)
             return {
                 'indices': self.studyIndices[start:end],
                 'studies': self.studies[start:end]
             }
-        if not all:
-            print(f'Does not yet exist, appending studies')
 
+        # Else, search
         resp = urllib3.request(
             "GET",
             self.downloadurl,
             fields=fields
         )
+        logger.info(resp.headers)
         if pageNum == 1:
             self.resultTotal = int(resp.headers.get('x-total-count'))
-            print(f'resultTotaldebug: type={type(self.resultTotal)} value={self.resultTotal} pagesize={self.pageSize}')
+
         pageToken = resp.headers.get('x-next-page-token')
         # last page !
         if pageToken is None:
             # disable the next page button
-            print('Empty page Token ,last one')
-            print(type(pageToken))
+            # logger.info('Empty page Token ,last one')
+            # logger.info(type(pageToken))
+            self.pageTokens.append('')
             self.signals.disableNextBtn.emit(False)
 
-        print('+++++++++++++++')
-        print(f'pageNum={pageNum}')
-        print(f'pageToken = {pageToken}')
-        print(str(self.pageTokens))
-        print('finished printing pageTokens')
+        # logger.info('+++++++++++++++')
+        # logger.info(f'pageNum={pageNum}')
+        # logger.info(f'pageToken = {pageToken}')
+        # logger.info(str(self.pageTokens))
+        # logger.info('finished printing pageTokens')
 
         if pageToken is not None:
             self.pageTokens.append(pageToken)
@@ -261,10 +276,10 @@ class Downloader(QRunnable):
         :param studyindex: array of int that points to studies in the studies[]
         :return:
         '''
-        print('Downloader Downloading...')
+        logger.info('Downloader Downloading...')
         studies = []  # array of STUDY objects to download.
 
-        if all:
+        if not all:
             for i in range(0, len(self.studyIndices)):
                 if self.studyIndices[i] == 1:
                     studies.append(self.studies[i])
@@ -277,15 +292,15 @@ class Downloader(QRunnable):
         elif self.filemode == 'CSV':
             self.writeToCSV(studies)
         else:
-            print('ERROR: incorrect filemode')
-            print(f"Current filemode is : {self.filemode} . You can only choose HTML or CSV")
+            logger.info('ERROR: incorrect filemode')
+            logger.info(f"Current filemode is : {self.filemode} . You can only choose HTML or CSV")
 
         return
 
     @Slot()
     def downloadAll(self):
         # search again with max pagesize
-        print('result Total = ', self.resultTotal)
+        # logger.info('result Total = ', self.resultTotal)
         self.setPageSize(self.resultTotal)
         self.search(all=True)
         self.download(all=True)
@@ -297,15 +312,15 @@ class Downloader(QRunnable):
         :param resp:
         :return:
         """
-        print('******* Creating Studies *******')
+        logger.info('******* Creating Studies *******')
         data = resp.data.decode('utf-8')
-        # print('resp.data:\n{}'.format(data))
+        # logger.info('resp.data:\n{}'.format(data))
 
         content = []
         reader = csv.reader(data.splitlines(), delimiter=',')
         for row in reader:
             content.append(row)
-        # print(f'content study numbers: {len(content)}')
+        logger.info(f'content study numbers: {len(content)}')
 
         headers = content[0]
         # TODO: returned study documents seem to be always at the end ?
@@ -321,7 +336,7 @@ class Downloader(QRunnable):
         # TODO: dynamically get title
         start = 0 if self.docposFound and not all else 1
         shift = 1 if self.docposFound and not all else 0
-        print(f'start={start} shift={shift}')
+        # logger.info(f'start={start} shift={shift}')
         if all:
             self.studies=[]
             self.studyIndices=[]
@@ -369,12 +384,12 @@ class Downloader(QRunnable):
             # keep only 200 chars, change later
             validtitle = titletmp[0:100]
             validtitle = validtitle.strip()  # windows want no space or . in folder names
-            # print('ValidTitle: {}'.format(validtitle))
+            # logger.info('ValidTitle: {}'.format(validtitle))
             titlewindex = str(study.index) + '-' + validtitle
-            # print('titlewindex: {}'.format(titlewindex))
+            # logger.info('titlewindex: {}'.format(titlewindex))
 
             csvString = '"' + titletmp + '"' + ','  # First column in csv, Study Title
-            # print('csvString: {}'.format(csvString))
+            # logger.info('csvString: {}'.format(csvString))
 
             flen = len(filenames)
             try:
@@ -383,16 +398,16 @@ class Downloader(QRunnable):
                         raise WorkerKilledException
                     filename = filenames[i]
                     fileUrl = fileUrls[i]
-                    print('fileurl: {}'.format(fileUrl))
+                    logger.info('fileurl: {}'.format(fileUrl))
                     resp = urllib3.request(
                         "GET",
                         fileUrl
                     )
 
-                    directory = self.downloadFolder + titlewindex
-                    # print('dir: {}'.format(directory))
+                    directory = os.path.join(self.downloadFolder , titlewindex)
+                    # logger.info('dir: {}'.format(directory))
                     file_path = os.path.join(directory, filename)
-                    print('fp: {}'.format(file_path))
+                    # logger.info('fp: {}'.format(file_path))
 
                     if not os.path.isdir(directory):
                         os.makedirs(directory)
@@ -407,12 +422,12 @@ class Downloader(QRunnable):
                     csvString = self.addtocsv(csvString, filename, relative_folder_path)
 
             except WorkerKilledException:
-                print('Stop Button Pressed')
+                logger.info('Stop Button Pressed')
                 pass
             self.generateCSVLines(csvString)
             # for Multi-Thread progress bar
             # TODO: calculate progress bar values.
-            print(f'Emitting Value: {(listindex + 1) * 100 / studylen}')
+            # logger.info(f'Emitting Value: {(listindex + 1) * 100 / studylen}')
             self.signals.updateProgressBar.emit((listindex + 1) * 100 / studylen)
         self.writeAlltoCSV()
         return
@@ -434,7 +449,7 @@ class Downloader(QRunnable):
 
     def writeToHTML(self, studies):
         # get a new HTML folder and file for each download
-        print('writeToHTML updating...')
+        # logger.info('writeToHTML updating...')
         self.htmlWriter.update(
             studyTitle=self.studyTitle,
             condition=self.condition,
@@ -446,8 +461,8 @@ class Downloader(QRunnable):
         )
         # download first, then build HTML
         # download
-        print(f'downloadfolder: {self.downloadFolder}')
-        print('Starting htmlwriter')
+        # logger.info(f'downloadfolder: {self.downloadFolder}')
+        logger.info('Starting htmlwriter')
         self.htmlWriter.writeToHTML()
 
         # build HTML from template
@@ -473,24 +488,28 @@ class Downloader(QRunnable):
         exist = False
         if len(self.studies) > start:
             exist = True
-        print('****** update study indices ******')
-        print(f'start={start} end={end} pageNum={pageNum} exist={exist}')
-        print('before update:')
-        print(self.studyIndices)
-        print('to update:')
-        print(studyIndices)
+        logger.info('****** update study indices ******')
+        logger.info(f'start={start} end={end} pageNum={pageNum} exist={exist}')
+        logger.info('before update:')
+        logger.info(self.studyIndices)
+        logger.info('to update:')
+        logger.info(studyIndices)
 
         # if exist, update current page
         if exist:
             arritr = iter(arr)
-            print('exists. updating')
+            # logger.info('exists. updating')
             for i in range(start, end):
                 self.studyIndices[i] = next(arritr)
         # else, append current page
         else:
             self.studyIndices.extend(studyIndices)
 
-        print('after update:')
-        print(self.studyIndices)
-        print('finished updating study indices')
+        logger.info('after update:')
+        logger.info(self.studyIndices)
+        logger.info('finished updating study indices')
         return
+
+    def setSponsor(self, param):
+        self.sponsor = param
+        pass

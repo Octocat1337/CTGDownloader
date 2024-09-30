@@ -5,7 +5,11 @@ import urllib3
 from PySide6.QtCore import QRunnable, Slot, Signal
 from urllib3 import Timeout
 
+import logging
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p',
+                    filename='CTD-log.log', encoding='utf-8', level=logging.INFO)
 class WorkerKilledException(Exception):
     pass
 
@@ -67,7 +71,7 @@ class HTMLWriter(QRunnable):
         htmlfile = open(templatePath, 'r', encoding='utf-8')
         htmlcontent = htmlfile.readlines()
         htmlfile.close()
-        print('HTMLWriter: loaded template')
+        logger.info('HTMLWriter: loaded template')
         endline = 0
         for linenumber, line in enumerate(htmlcontent):
             if line.find('table ends') > 0:
@@ -79,7 +83,7 @@ class HTMLWriter(QRunnable):
         for listindex, study in enumerate(self.studies):
             if self.is_killed:
                 break
-            print(f'---------- New Study {study.index}----------')
+            logger.info(f'---------- New Study {study.index}----------')
             # one name : one url
             filenames = study.fileNames
             fileUrls = study.fileUrls
@@ -114,8 +118,8 @@ class HTMLWriter(QRunnable):
                     # get suffix, in case it's not a pdf file.
                     suffix = fileUrl.split('.')[-1]
 
-                    print('New File')
-                    print('fileurl: {}'.format(fileUrl))
+                    logger.info('New File')
+                    logger.info('fileurl: {}'.format(fileUrl))
                     try:
                         resp = self.http.request(
                             "GET",
@@ -124,13 +128,13 @@ class HTMLWriter(QRunnable):
                         )
                     # TODO: update the table to display status
                     except urllib3.exceptions.ConnectTimeoutError:
-                        print('Connect Timeout')
+                        logger.info('Connect Timeout')
                         continue
                     except urllib3.exceptions.ReadTimeoutError:
-                        print('Read Timeout')
+                        logger.info('Read Timeout')
                         continue
                     except urllib3.exceptions.MaxRetryError:
-                        print('Max Retry 7 times reached')
+                        logger.info('Max Retry 7 times reached')
                         continue
 
                     directory = os.path.join(self.downloadFolder, self.HTMLFolderName, str(study.index))
@@ -140,11 +144,11 @@ class HTMLWriter(QRunnable):
                         os.makedirs(directory)
 
                     file_path2 = file_path + '.' + suffix
-                    print(f'fp: {file_path2}')
+                    logger.info(f'fp: {file_path2}')
 
                     with open(file_path2, 'wb') as file:
                         file.write(resp.data)
-                    print('Finished writing file to folder')
+                    logger.info('Finished writing file to folder')
 
                     #TODO: check line2. should I use path.join ?
                     file_path3 = os.path.join(str(study.index), filename+'.'+suffix)
@@ -154,12 +158,12 @@ class HTMLWriter(QRunnable):
                     line2 = (f'<td><a href="{file_path3}" target=_blank>'
                         f'{oldfilename}</a></td>\n'
                     )
-                    print(f'htmlline: {line2}')
+                    logger.info(f'htmlline: {line2}')
                     htmlcontent.insert(endline, line2)
                     endline += 1
 
             except WorkerKilledException:
-                print('Stop Button Pressed')
+                logger.info('Stop Button Pressed')
                 pass
 
             line = '</tr>\n'
@@ -167,7 +171,7 @@ class HTMLWriter(QRunnable):
             endline += 1
             # for Multi-Thread progress bar
             # TODO: calculate progress bar values.
-            print(f'Emitting Value: {(listindex + 1) * 100 / studylen}')
+            logger.info(f'Emitting Value: {(listindex + 1) * 100 / studylen}')
             if not self.is_killed:
                 self.signals.updateProgressBar.emit((listindex + 1) * 90 / studylen)
             else:
