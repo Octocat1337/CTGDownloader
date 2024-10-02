@@ -1,9 +1,9 @@
 import os
-from math import ceil
+from math import ceil, floor
 
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QThreadPool, Slot
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtGui import QIcon, QFont, QStandardItem
 
 from PySide6.QtWidgets import QWidget, QFormLayout, QVBoxLayout, QPushButton, QTableWidget, QHBoxLayout, QScrollArea, \
     QLineEdit, QLabel, QCheckBox, QTableWidgetItem, QAbstractItemView, QProgressBar, \
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p',
                     filename='CTD-log.log', encoding='utf-8', level=logging.INFO)
 
+
 class CTDWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__()
@@ -24,8 +25,8 @@ class CTDWindow(QWidget):
         self.downloadFolderName = ''
         self.parent = parent
         # Setup Style Sheet
-        filename=os.path.join('resources','QSS')
-        with open(filename,'r') as f:
+        filename = os.path.join('resources', 'QSS')
+        with open(filename, 'r') as f:
             self.setStyleSheet(f.read())
 
         # Setup logger
@@ -95,9 +96,6 @@ class CTDWindow(QWidget):
         self.resultBarLayoutLeft = QHBoxLayout()
         self.resultBarLayoutRight = QHBoxLayout()
 
-        self.allBtn = QPushButton('Select\nAll/None')
-        self.allBtn.clicked.connect(self.selectAll)
-        self.allBtn.setEnabled(False)
         self.selectedAll = True
         self.resultBarLabel = QLabel('Number of results:')
         self.resultBarLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -107,7 +105,6 @@ class CTDWindow(QWidget):
         self.pageNumLabel.setFixedWidth(80)  # by pixels
         self.resultBarProgression = QProgressBar()
 
-        self.resultBarLayoutLeft.addWidget(self.allBtn,10)
         self.resultBarLayoutLeft.addWidget(self.resultBarLabel, 20)
         self.resultBarLayoutLeft.addWidget(self.pageNumLabel, 5)
         self.resultBarLayoutLeft.addWidget(self.resultBarProgression, 60)
@@ -116,6 +113,7 @@ class CTDWindow(QWidget):
         self.resultBarLayout.addLayout(self.resultBarLayoutRight, 40)
 
         # central table widget
+        self.tableHeader1 = None
         self.tableWidget = QTableWidget()
 
         ########## Create buttons ##########
@@ -126,13 +124,12 @@ class CTDWindow(QWidget):
         self.dlAllBtn = QPushButton('Download All')
         self.dlAllBtn.clicked.connect(self.downloadAll)
         self.dlAllBtn.setEnabled(False)
-        self.resultBarLayoutRight.addWidget(self.dlAllBtn,20)
+        self.resultBarLayoutRight.addWidget(self.dlAllBtn, 20)
         self.dlFldrBtn = QPushButton('Open Download Folder')
         self.dlFldrBtn.setEnabled(False)
-        self.resultBarLayoutRight.addWidget(self.dlFldrBtn,20)
+        self.resultBarLayoutRight.addWidget(self.dlFldrBtn, 20)
         self.placeholder = QLabel('')
         self.resultBarLayoutRight.addWidget(self.placeholder, 60)
-
 
         # Create bottom buttons
         self.searchBtn = QPushButton('Search')
@@ -193,7 +190,6 @@ class CTDWindow(QWidget):
 
         # Disable search to not lose the prev results.
         # Handle buttons first before any signals
-        self.allBtn.setEnabled(True)
         self.searchBtn.setEnabled(False)
         self.newSearchBtn.setEnabled(True)
         self.nextBtn.setEnabled(True)
@@ -212,7 +208,6 @@ class CTDWindow(QWidget):
         self.downloader.signals.updateDownloadButton.connect(self.updateDownloadButton)
         self.downloader.signals.disableNextBtn.connect(self.disableNextBtn)
         # Testing Params
-
 
         # aggFilters
         # TODO: separate each aggFilter into functions
@@ -262,6 +257,7 @@ class CTDWindow(QWidget):
         logger.info('Search Finished')
 
         self.buildtable(result)
+
     def buildtable(self, result):
 
         logger.info('-----Building Table-----')
@@ -282,12 +278,15 @@ class CTDWindow(QWidget):
         titlepos = 1
         # TODO: change row and column numbers dynamically
         self.tableWidget.setColumnCount(2)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.tableWidget.setColumnWidth(0, 20)
-        self.tableWidget.setColumnWidth(1,1180)
-        all = QTableWidgetItem('')
-        all.setFlags(QtCore.Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-        all.setCheckState(Qt.Checked)
-        self.tableWidget.setHorizontalHeaderItem(0, all)
+        self.tableWidget.setColumnWidth(1, 1180)
+        self.tableHeader1 = QTableWidgetItem()
+        self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
+
+        self.tableWidget.horizontalHeader().setSectionsClickable(True)
+        self.tableWidget.horizontalHeader().sectionClicked.connect(self.selectAll)
+        self.tableWidget.setHorizontalHeaderItem(0, self.tableHeader1)
         self.tableWidget.setHorizontalHeaderItem(titlepos, QTableWidgetItem('Title'))
         self.tableWidget.setRowCount(studylen)
 
@@ -355,8 +354,6 @@ class CTDWindow(QWidget):
             self.searchBtn.setEnabled(False)
             self.download(all=True)
 
-
-
     def updateProgressBar(self, value):
         self.resultBarProgression.setValue(value)
 
@@ -412,7 +409,6 @@ class CTDWindow(QWidget):
     def newSearch(self):
         self.searchBtn.setEnabled(True)
         self.newSearchBtn.setEnabled(False)
-        self.allBtn.setEnabled(False)
         self.prevBtn.setEnabled(False)
         self.nextBtn.setEnabled(False)
         # disable all download buttons
@@ -421,7 +417,6 @@ class CTDWindow(QWidget):
         self.dlFldrBtn.setEnabled(False)
         # reset progress bar
         self.updateProgressBar(0)
-
 
     def disableNextBtn(self, bool):
         logger.warning(f'Stop button SIGNAL RECEIVED: {bool}')
@@ -442,17 +437,19 @@ class CTDWindow(QWidget):
         os.startfile(self.downloadFolderName)
 
     @Slot()
-    def selectAll(self):
+    def selectAll(self, index):
         # 1st time clicked, select none
-        if self.selectedAll:
-            for row in range(self.tableWidget.rowCount()):
-                checkbox = self.tableWidget.item(row, 0)
-                checkbox.setCheckState(Qt.Unchecked)
-            self.selectedAll=False
-        else:
-            for row in range(self.tableWidget.rowCount()):
-                checkbox = self.tableWidget.item(row, 0)
-                checkbox.setCheckState(Qt.Checked)
-            self.selectedAll=True
-
-
+        if index == 0:
+            if self.selectedAll:
+                for row in range(self.tableWidget.rowCount()):
+                    checkbox = self.tableWidget.item(row, 0)
+                    checkbox.setCheckState(Qt.Unchecked)
+                self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListAdd))
+                # self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
+                self.selectedAll = False
+            else:
+                for row in range(self.tableWidget.rowCount()):
+                    checkbox = self.tableWidget.item(row, 0)
+                    checkbox.setCheckState(Qt.Checked)
+                self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
+                self.selectedAll = True
