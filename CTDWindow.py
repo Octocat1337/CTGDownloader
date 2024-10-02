@@ -96,7 +96,6 @@ class CTDWindow(QWidget):
         self.resultBarLayoutLeft = QHBoxLayout()
         self.resultBarLayoutRight = QHBoxLayout()
 
-        self.selectedAll = True
         self.resultBarLabel = QLabel('Number of results:')
         self.resultBarLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.resultBarLabel.setFixedWidth(150)  # by pixels
@@ -157,6 +156,7 @@ class CTDWindow(QWidget):
         self.downloadBtn.setEnabled(False)
 
         # other settings
+        # initialize central table
         self.initTable()
 
         # add everything to outermost layouts
@@ -180,9 +180,24 @@ class CTDWindow(QWidget):
         self.pageNum = 0
 
     def initTable(self):
+
+        self.titlepos = 1
+
         self.tableWidget.setAutoScroll(False)
         self.tableWidget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-        # self.tableWidget.setStyleSheet('QTableWidget::item {padding: 5px}')
+        self.tableWidget.setColumnCount(2)
+
+        self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.tableWidget.setColumnWidth(0, 20)
+        self.tableWidget.setColumnWidth(1, 1180)
+
+        self.tableHeader1 = QTableWidgetItem()
+        self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditSelectAll))
+
+        self.tableWidget.horizontalHeader().setSectionsClickable(True)
+        self.tableWidget.horizontalHeader().sectionClicked.connect(self.selectAll)
+        self.tableWidget.setHorizontalHeaderItem(0, self.tableHeader1)
+        self.tableWidget.setHorizontalHeaderItem(self.titlepos, QTableWidgetItem('Title'))
 
     def search(self):
         # Need a function to handle all args/all fields
@@ -275,19 +290,18 @@ class CTDWindow(QWidget):
         if studylen == 0:
             return
 
-        titlepos = 1
-        # TODO: change row and column numbers dynamically
-        self.tableWidget.setColumnCount(2)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.tableWidget.setColumnWidth(0, 20)
-        self.tableWidget.setColumnWidth(1, 1180)
-        self.tableHeader1 = QTableWidgetItem()
-        self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
-
-        self.tableWidget.horizontalHeader().setSectionsClickable(True)
-        self.tableWidget.horizontalHeader().sectionClicked.connect(self.selectAll)
-        self.tableWidget.setHorizontalHeaderItem(0, self.tableHeader1)
-        self.tableWidget.setHorizontalHeaderItem(titlepos, QTableWidgetItem('Title'))
+        # titlepos = 1
+        # self.tableWidget.setColumnCount(2)
+        # self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        # self.tableWidget.setColumnWidth(0, 20)
+        # self.tableWidget.setColumnWidth(1, 1180)
+        # self.tableHeader1 = QTableWidgetItem()
+        # self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditSelectAll))
+        #
+        # self.tableWidget.horizontalHeader().setSectionsClickable(True)
+        # self.tableWidget.horizontalHeader().sectionClicked.connect(self.selectAll)
+        # self.tableWidget.setHorizontalHeaderItem(0, self.tableHeader1)
+        # self.tableWidget.setHorizontalHeaderItem(titlepos, QTableWidgetItem('Title'))
         self.tableWidget.setRowCount(studylen)
 
         # self.tableWidget.cellClicked.connect(self.selectAll)
@@ -312,7 +326,7 @@ class CTDWindow(QWidget):
                 checkbox.setCheckState(Qt.Unchecked)
 
             # self.tableWidget.removeCellWidget()
-            self.tableWidget.setItem(i, titlepos, title)
+            self.tableWidget.setItem(i, self.titlepos, title)
             self.tableWidget.setItem(i, 0, checkbox)
 
             self.tableWidget.resizeRowToContents(i)
@@ -440,16 +454,13 @@ class CTDWindow(QWidget):
     def selectAll(self, index):
         # 1st time clicked, select none
         if index == 0:
-            if self.selectedAll:
+            print('called. ')
+            print(self.tableWidget.item(0,0).checkState())
+            if self.tableWidget.item(0,0).checkState()==Qt.Checked:
                 for row in range(self.tableWidget.rowCount()):
                     checkbox = self.tableWidget.item(row, 0)
                     checkbox.setCheckState(Qt.Unchecked)
-                self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListAdd))
-                # self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
-                self.selectedAll = False
             else:
                 for row in range(self.tableWidget.rowCount()):
                     checkbox = self.tableWidget.item(row, 0)
                     checkbox.setCheckState(Qt.Checked)
-                self.tableHeader1.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
-                self.selectedAll = True
