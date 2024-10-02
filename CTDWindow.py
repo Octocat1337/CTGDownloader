@@ -7,7 +7,7 @@ from PySide6.QtGui import QIcon, QFont
 
 from PySide6.QtWidgets import QWidget, QFormLayout, QVBoxLayout, QPushButton, QTableWidget, QHBoxLayout, QScrollArea, \
     QLineEdit, QLabel, QCheckBox, QTableWidgetItem, QAbstractItemView, QProgressBar, \
-    QSizePolicy, QMessageBox, QMainWindow
+    QSizePolicy, QMessageBox, QMainWindow, QHeaderView
 from Downloader import Downloader
 
 import logging
@@ -19,10 +19,6 @@ logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S
 class CTDWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__()
-
-        # self.resize(1244, 700)
-        # self.setWindowTitle('CTD')
-        # self.setWindowIcon(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave))
 
         # args from children: downloader.HTMLWriter
         self.downloadFolderName = ''
@@ -98,18 +94,26 @@ class CTDWindow(QWidget):
         self.resultBarLayout = QHBoxLayout()
         self.resultBarLayoutLeft = QHBoxLayout()
         self.resultBarLayoutRight = QHBoxLayout()
+
+        self.allBtn = QPushButton('Select\nAll/None')
+        self.allBtn.clicked.connect(self.selectAll)
+        self.allBtn.setEnabled(False)
+        self.selectedAll = True
         self.resultBarLabel = QLabel('Number of results:')
         self.resultBarLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.resultBarLabel.setFixedWidth(150)  # by pixels
         self.pageNumLabel = QLabel('Page:')
         self.pageNumLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.pageNumLabel.setFixedWidth(150)  # by pixels
+        self.pageNumLabel.setFixedWidth(80)  # by pixels
         self.resultBarProgression = QProgressBar()
+
+        self.resultBarLayoutLeft.addWidget(self.allBtn,10)
         self.resultBarLayoutLeft.addWidget(self.resultBarLabel, 20)
-        self.resultBarLayoutLeft.addWidget(self.pageNumLabel, 20)
+        self.resultBarLayoutLeft.addWidget(self.pageNumLabel, 5)
         self.resultBarLayoutLeft.addWidget(self.resultBarProgression, 60)
-        self.resultBarLayout.addLayout(self.resultBarLayoutLeft, 50)
-        self.resultBarLayout.addLayout(self.resultBarLayoutRight, 50)
+
+        self.resultBarLayout.addLayout(self.resultBarLayoutLeft, 60)
+        self.resultBarLayout.addLayout(self.resultBarLayoutRight, 40)
 
         # central table widget
         self.tableWidget = QTableWidget()
@@ -124,6 +128,7 @@ class CTDWindow(QWidget):
         self.dlAllBtn.setEnabled(False)
         self.resultBarLayoutRight.addWidget(self.dlAllBtn,20)
         self.dlFldrBtn = QPushButton('Open Download Folder')
+        self.dlFldrBtn.setEnabled(False)
         self.resultBarLayoutRight.addWidget(self.dlFldrBtn,20)
         self.placeholder = QLabel('')
         self.resultBarLayoutRight.addWidget(self.placeholder, 60)
@@ -188,6 +193,7 @@ class CTDWindow(QWidget):
 
         # Disable search to not lose the prev results.
         # Handle buttons first before any signals
+        self.allBtn.setEnabled(True)
         self.searchBtn.setEnabled(False)
         self.newSearchBtn.setEnabled(True)
         self.nextBtn.setEnabled(True)
@@ -212,19 +218,14 @@ class CTDWindow(QWidget):
         # TODO: separate each aggFilter into functions
         # check for protocols
         studydocuments = 'docs:'
-        first = True
+        tmp = ''
         if self.protbox.isChecked():
-            tmp = 'prot' if first else ' prot'
-            studydocuments += tmp
-            first = False
+            tmp += ' prot'
         if self.sapbox.isChecked():
-            tmp = 'sap' if first else ' sap'
-            studydocuments += tmp
-            first = False
+            tmp += ' sap'
         if self.icfbox.isChecked():
-            tmp = 'icf' if first else ' icf'
-            studydocuments += tmp
-            first = False
+            tmp += ' icf'
+        studydocuments += tmp.strip()
 
         self.downloader.buildAggFilters(studydocuments)
         # check for phase
@@ -247,17 +248,23 @@ class CTDWindow(QWidget):
         self.downloader.buildAggFilters(phase)
 
         self.pageNum = 1
-        result = self.downloader.search(pageNum=self.pageNum)
 
-        #TODO: add functions ?
-        self.buildtable(result)
-        logger.info('Search Finished')
         # Enable relative buttons
         self.downloadBtn.setEnabled(True)
         self.dlAllBtn.setEnabled(True)
+
+        # build table based on resutls
+        result = self.downloader.search(pageNum=self.pageNum)
+
+        self.resultBarLabel.setText('Number of results: {}'.format(self.downloader.resultTotal))
+        totalpages = ceil(self.downloader.resultTotal / self.downloader.pageSize)
+        self.pageNumLabel.setText(f'Page: {self.pageNum}/{totalpages}')
+        logger.info('Search Finished')
+
+        self.buildtable(result)
     def buildtable(self, result):
 
-        logger.info('Building Table')
+        logger.info('-----Building Table-----')
         # columns: study title
         studies = result['studies']
         indices = result['indices']
@@ -265,30 +272,40 @@ class CTDWindow(QWidget):
         self.tableWidget.clearContents()
         # logger.info(self.tableWidget.rowCount())
         # logger.info(self.tableWidget.columnCount())
+        totalpages = ceil(self.downloader.resultTotal / self.downloader.pageSize)
+        self.pageNumLabel.setText(f'Page: {self.pageNum}/{totalpages}')
 
         studylen = len(studies)
         if studylen == 0:
             return
 
-        self.resultBarLabel.setText('Number of results: {}'.format(self.downloader.resultTotal))
-        totalpages = ceil(self.downloader.resultTotal / self.downloader.pageSize)
-        self.pageNumLabel.setText(f'Page: {self.pageNum}/{totalpages}')
-
+        titlepos = 1
         # TODO: change row and column numbers dynamically
-        self.tableWidget.setColumnCount(1)
-        self.tableWidget.setHorizontalHeaderItem(0, QTableWidgetItem('Title'))
+        self.tableWidget.setColumnCount(2)
+        self.tableWidget.setColumnWidth(0, 20)
+        self.tableWidget.setColumnWidth(1,1180)
+        all = QTableWidgetItem('')
+        all.setFlags(QtCore.Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+        all.setCheckState(Qt.Checked)
+        self.tableWidget.setHorizontalHeaderItem(0, all)
+        self.tableWidget.setHorizontalHeaderItem(titlepos, QTableWidgetItem('Title'))
         self.tableWidget.setRowCount(studylen)
 
-        header = self.tableWidget.horizontalHeader()
-        header.setDefaultSectionSize(1200)
-        # header.setSectionResizeMode(0,QHeaderView.ResizeMode.ResizeToContents)
+        # self.tableWidget.cellClicked.connect(self.selectAll)
+
+        # header = self.tableWidget.horizontalHeader()
+        # header.resizeSection(0,20)
+        # header.resizeSection(titlepos,1000)
+        # header.setDefaultSectionSize(1200)
+        # header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         # header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
         for i in range(0, studylen):
             checkbox = QTableWidgetItem()
+            title = QTableWidgetItem()
             # logger.info(studies[i].title)
-            checkbox.setFont(QFont('San Francisco', 12))
-            checkbox.setText(studies[i].title)
+            title.setFont(QFont('San Francisco', 12))
+            title.setText(studies[i].title)
             checkbox.setFlags(QtCore.Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             if indices[i] == 1:
                 checkbox.setCheckState(Qt.Checked)
@@ -296,12 +313,14 @@ class CTDWindow(QWidget):
                 checkbox.setCheckState(Qt.Unchecked)
 
             # self.tableWidget.removeCellWidget()
+            self.tableWidget.setItem(i, titlepos, title)
             self.tableWidget.setItem(i, 0, checkbox)
+
             self.tableWidget.resizeRowToContents(i)
 
         self.count += 1  # for Testing Purpose
 
-        logger.info('Finished Building Table')
+        logger.info('-----Finished Building Table-----')
 
     def download(self, all=False):
         # get which file should be downloaded
@@ -318,6 +337,7 @@ class CTDWindow(QWidget):
             self.threadpool.start(self.downloader.download)
 
         self.dlFldrBtn.clicked.connect(self.openDownloadFolder)
+        self.dlFldrBtn.setEnabled(True)
 
     def downloadAll(self):
         logger.info('Download ALL button pressed')
@@ -392,14 +412,19 @@ class CTDWindow(QWidget):
     def newSearch(self):
         self.searchBtn.setEnabled(True)
         self.newSearchBtn.setEnabled(False)
+        self.allBtn.setEnabled(False)
         self.prevBtn.setEnabled(False)
         self.nextBtn.setEnabled(False)
+        # disable all download buttons
         self.downloadBtn.setEnabled(False)
         self.dlAllBtn.setEnabled(False)
+        self.dlFldrBtn.setEnabled(False)
+        # reset progress bar
         self.updateProgressBar(0)
 
+
     def disableNextBtn(self, bool):
-        logger.info(f'SIGNAL RECEIVED: {bool}')
+        logger.warning(f'Stop button SIGNAL RECEIVED: {bool}')
         self.nextBtn.setEnabled(bool)
 
     def getCurTableState(self):
@@ -415,4 +440,19 @@ class CTDWindow(QWidget):
     @Slot()
     def openDownloadFolder(self):
         os.startfile(self.downloadFolderName)
+
+    @Slot()
+    def selectAll(self):
+        # 1st time clicked, select none
+        if self.selectedAll:
+            for row in range(self.tableWidget.rowCount()):
+                checkbox = self.tableWidget.item(row, 0)
+                checkbox.setCheckState(Qt.Unchecked)
+            self.selectedAll=False
+        else:
+            for row in range(self.tableWidget.rowCount()):
+                checkbox = self.tableWidget.item(row, 0)
+                checkbox.setCheckState(Qt.Checked)
+            self.selectedAll=True
+
 
